@@ -1,11 +1,10 @@
 #include <torch/extension.h>
-#include <vector>
 
-// CUDA forward declarations
+// CUDA function declaration
 
-std::vector<torch::Tensor> cuda_add(
-    torch::Tensor a,
-    torch::Tensor b);
+torch::Tensor cuda_add(
+		torch::Tensor a,
+		torch::Tensor b);
 
 // C++ interface
 
@@ -14,15 +13,16 @@ std::vector<torch::Tensor> cuda_add(
 #define CHECK_INPUT(x) CHECK_CUDA(x); CHECK_CONTIGUOUS(x)
 
 
-std::vector<torch::Tensor> add(
-    torch::Tensor a,
-    torch::Tensor b) {
-  CHECK_INPUT(a);
-  CHECK_INPUT(b);
-
-  return cuda_add(a, b);
+torch::Tensor add(
+		torch::Tensor a,
+		torch::Tensor b) 
+{
+	CHECK_INPUT(a);
+	CHECK_INPUT(b);
+	return cuda_add(a, b);
 }
 
-PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
-  m.def("add", &add, "Fancy Add");
+PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) 
+{
+	m.def("add", &add, "cuda add");
 }
