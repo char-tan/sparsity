@@ -8,6 +8,6 @@ torch::Tensor cuda_add(
 		torch::Tensor a,
 		torch::Tensor b)
 {
-	auto c = torch::sum(a, b)
-	return {c};
+	auto c = torch::add(a, b);
+	return c;
 }
