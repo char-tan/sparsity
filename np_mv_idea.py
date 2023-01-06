@@ -30,7 +30,7 @@ class SparseMatrix:
         """
         general idea here is that the matrix of weights does not change once trained
         so can store the compressed version with indicies during inference
-        real question is how much we can optimise / parallelise the region below
+        real question is how much we can optimise / parallelise finding the right values of vector for each row
         """
 
         self.M = M
