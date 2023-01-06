@@ -7,8 +7,6 @@ def make_fss(M, sparsity=(2,4)):
     make M fine-structured-sparse by applying mask
     """
 
-    print('\nsparsifying matrix')
-
     # only matricies
     assert len(M.shape) == 2
 
@@ -34,22 +32,24 @@ def make_fss(M, sparsity=(2,4)):
     # produce final mask
     mask = mini_masks[mask_selection,:].flatten(1)
 
-    print('done!\n')
-
     return M * mask
 
 
-size = 8  # TODO might want options for different size A, B
+size = 1024  # TODO might want options for different size A, B
 sparsity = (2, 4)
-dtype = torch.float  # TODO need to think carefully about dtypes
 
-A = torch.rand((size, size))
-A_s = make_fss(A)
+A = torch.rand((size, size)) # TODO need to think carefully about dtypes
+
+print('\nsparsifying matrix')
+A = make_fss(A)
 B = torch.rand((size, size))
 
+# https://pytorch.org/docs/stable/benchmark_utils.html
 timer = benchmark.Timer(
     stmt='torch.matmul(A, B)',
-    setup='from torch import matmul',
-    globals={'A': A, 'B': B})
+    setup='import torch',
+    globals={'A': A, 'B': B},
+    label='native PyTorch matmul')
 
+print('\nbenchmarking\n')
 print(timer.timeit(100))
