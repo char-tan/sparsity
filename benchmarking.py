@@ -32,17 +32,14 @@ def make_fss(M, sparsity=(2,4)):
     mask_selection = torch.randint(index_combinations.shape[0], (rows, cols // total))
 
     # produce final mask
-    mask = torch.zeros((rows, cols))
-    for i in range(mask_selection.shape[0]):
-        for j in range(mask_selection.shape[1]):
-            mask[i,j*total:(j+1)*total] = mini_masks[mask_selection[i,j],:]
+    mask = mini_masks[mask_selection,:].flatten(1)
 
     print('done!\n')
 
     return M * mask
 
 
-size = 1024  # TODO might want options for different size A, B
+size = 8  # TODO might want options for different size A, B
 sparsity = (2, 4)
 dtype = torch.float  # TODO need to think carefully about dtypes
 
