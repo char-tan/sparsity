@@ -1,2 +1,2 @@
-# sparsity
-L46 Project
+# Group Project for L46: Principles of ML Systems
+## Work-in-progress
