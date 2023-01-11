@@ -115,7 +115,7 @@ def print_info(info: dict):
 def train_model():
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    n_epochs = 50
+    n_epochs = 100
     batch_size = 128
 
     momentum = 0.9
@@ -177,6 +177,8 @@ def train_model():
         print_info(info)
         time = t.time()
 
+    return model
 
 if __name__ == "__main__":
     train_model()
+
