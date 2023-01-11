@@ -50,16 +50,16 @@ class PreLoadCIFAR10(torchvision.datasets.CIFAR10):
         return self.data.shape[0]
 
 
-def train_epoch(model, train_loader, optimizer, scheduler, verbose=0):
+def train_epoch(model, train_loader, optimizer, scheduler, device, verbose=0):
 
     train_loss = []
     train_acc = []
 
-    for i, batch in enumerate(train_loader):
+    for i, (data, target) in enumerate(train_loader):
 
         optimizer.zero_grad(set_to_none=False)
 
-        data, target = batch
+        data, target = data.to(device), target.to(device)
 
         output = model(data)
 
@@ -79,16 +79,16 @@ def train_epoch(model, train_loader, optimizer, scheduler, verbose=0):
     return np.mean(train_loss), np.mean(train_acc)
 
 
-def test_epoch(model, test_loader, verbose=0):
+def test_epoch(model, test_loader, device, verbose=0):
 
     test_loss = []
     test_acc = []
 
     with torch.no_grad():
 
-        for i, batch in enumerate(test_loader):
+        for i, (data, target) in enumerate(test_loader):
 
-            data, target = batch
+            data, target = data.to(device), target.to(device)
 
             output = model(data)
 
@@ -115,10 +115,10 @@ def print_info(info: dict):
     print(statement)
 
 
-def train_model():
+def train_model(model):
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    n_epochs = 100
+    n_epochs = 250
     batch_size = 128
 
     momentum = 0.9
@@ -128,7 +128,7 @@ def train_model():
 
     verbose = False
 
-    model = torchvision.models.resnet18(num_classes=10).to(device)
+    model = model.to(device)
 
     train_kwargs = {"root": "data", "train": True, "download": True}
     test_kwargs = {"root": "data", "train": False, "download": False}
@@ -164,9 +164,9 @@ def train_model():
 
     for epoch in range(n_epochs):
         train_loss, train_acc = train_epoch(
-            model.train(), train_loader, optimizer, scheduler
+            model.train(), train_loader, optimizer, scheduler, device
         )
-        test_loss, test_acc = test_epoch(model.eval(), test_loader)
+        test_loss, test_acc = test_epoch(model.eval(), test_loader, device)
 
         info = {
             "epoch": epoch,
@@ -179,8 +179,6 @@ def train_model():
 
         print_info(info)
         time = t.time()
-
-    return model
 
 
 if __name__ == "__main__":
