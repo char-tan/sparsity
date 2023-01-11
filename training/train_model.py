@@ -1,6 +1,8 @@
 #from apex.contrib.sparsity import ASP     
 #ASP.prune_trained_model(model, optimizer) #pruned a trained model
 
+import numpy as np
+
 import torch
 import torch.nn.functional as F
 
@@ -36,9 +38,7 @@ class PreLoadCIFAR10(torchvision.datasets.CIFAR10):
     def __getitem__(self, index):
 
         image = self.data[index % len(self.data)]
-
         image = self.transform(image)
-
         target = self.targets[index % len(self.data)]
 
         return image, target
@@ -46,9 +46,75 @@ class PreLoadCIFAR10(torchvision.datasets.CIFAR10):
     def __len__(self):
         return self.data.shape[0]
 
-def main():
 
-    device = 'cuda'
+def train_epoch(model, train_loader, optimizer, scheduler, verbose=0):
+
+    train_loss = []
+    train_acc = []
+
+    for i, batch in enumerate(train_loader):
+    
+        optimizer.zero_grad(set_to_none=False)
+
+        data, target = batch
+
+        output = model(data)
+
+        loss = F.cross_entropy(output, target)
+        train_loss.append(loss.item())
+
+        acc = (output.max(1)[1].detach() == target).sum() / output.shape[0] * 100
+        train_acc.append(acc.item())
+
+        loss.backward()
+        optimizer.step()
+        scheduler.step()
+
+        if verbose:
+            print(f'train iteration: {i} | loss: {loss} | acc: {acc}')
+
+    return np.mean(train_loss), np.mean(train_acc)
+
+
+def test_epoch(model, test_loader, verbose=0):
+
+    test_loss = []
+    test_acc = []
+
+    with torch.no_grad():
+
+        for i, batch in enumerate(test_loader):
+        
+            data, target = batch
+
+            output = model(data)
+
+            loss = F.cross_entropy(output, target)
+            test_loss.append(loss.item())
+
+            acc = (output.max(1)[1].detach() == target).sum() / output.shape[0] * 100
+            test_acc.append(acc.item())
+
+            if verbose:
+                print(f'train iteration: {i} | loss: {loss} | acc: {acc}')
+
+    return np.mean(test_loss), np.mean(test_acc)
+
+
+def print_info(info: dict):
+
+    statement = ''
+
+    for key, val in info.items():
+
+        statement += '{0}: {1:.4g} | '.format(key, val)
+
+    print(statement)
+
+
+def train_model():
+
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
     n_epochs = 50
     batch_size = 128
 
@@ -57,7 +123,9 @@ def main():
     weight_decay=5e-4
     # seed?
 
-    model = torchvision.models.resnet18().to(device)
+    verbose = False
+
+    model = torchvision.models.resnet18(num_classes=10).to(device)
 
     train_kwargs = {'root': 'data', 'train': True, 'download': True}
     test_kwargs = {'root': 'data', 'train': False, 'download': False}
@@ -68,8 +136,6 @@ def main():
     train_loader = torch.utils.data.DataLoader(train_set, batch_size=batch_size, shuffle=True)
     test_loader = torch.utils.data.DataLoader(test_set, batch_size=batch_size*4, shuffle=False)
 
-    print(len(train_loader))
-
     optimizer = torch.optim.SGD(
             model.parameters(), 
             lr=lr,
@@ -77,34 +143,33 @@ def main():
             weight_decay=weight_decay,
             )
 
-    lr_scheduler = torch.optim.lr_scheduler.OneCycleLR(
+    scheduler = torch.optim.lr_scheduler.OneCycleLR(
             optimizer,
             max_lr=lr,
             div_factor=1e5,
             epochs=n_epochs,
             steps_per_epoch=len(train_loader),
             pct_start=1/n_epochs,
-            verbose=True,
+            verbose=verbose,
             )
 
     time = t.time()
 
     for epoch in range(n_epochs):
+        train_loss, train_acc = train_epoch(model.train(), train_loader, optimizer, scheduler)
+        test_loss, test_acc = test_epoch(model.eval(), test_loader)
 
-        for i, batch in enumerate(train_loader):
+        info = {
+          'epoch': epoch,
+          'time': t.time() - time,
+          'train loss': train_loss,
+          'train acc': train_acc,
+          'test loss': test_loss,
+          'test acc': test_acc,
+        }
 
-            data, target = batch
-
-            output = model(data)
-            loss = F.cross_entropy(output, target)
-            loss.backward()
-            optimizer.step()
-            lr_scheduler.step()
-
-            print(f'iteration {i} | loss {loss}')
-
-        print(t.time() - time)
-
+        print_info(info)
         time = t.time()
 
-#torch.save(...) # saves the pruned checkpoint with sparsity masks 
+if __name__ == '__main__':
+    train_model()
