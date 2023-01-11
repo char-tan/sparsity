@@ -16,18 +16,20 @@ class PreLoadCIFAR10(torchvision.datasets.CIFAR10):
     def __init__(self, device, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
+        # equivalent to T.ToTensor()
         self.data = torch.tensor(self.data, device=device)
         self.targets = torch.tensor(self.targets, device=device)
-
         self.data = self.data.to(torch.float32)
         self.data = self.data.permute(0, 3, 1, 2)
         self.data = self.data / 255
 
+        # normalize data wrt mean and std
         self.data = T.Normalize(
             (0.4914, 0.4822, 0.4465),
             (0.2023, 0.1994, 0.2010),
         )(self.data)
 
+        # data aumgentaion for train
         if kwargs["train"]:
             transforms = [T.RandomHorizontalFlip()]
         else:
@@ -38,8 +40,9 @@ class PreLoadCIFAR10(torchvision.datasets.CIFAR10):
     def __getitem__(self, index):
 
         image = self.data[index % len(self.data)]
-        image = self.transform(image)
         target = self.targets[index % len(self.data)]
+
+        image = self.transform(image)
 
         return image, target
 
@@ -179,6 +182,6 @@ def train_model():
 
     return model
 
+
 if __name__ == "__main__":
     train_model()
-
