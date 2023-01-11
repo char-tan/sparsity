@@ -12,44 +12,6 @@ import torchvision.transforms as T
 import time as t
 
 
-class PreLoadCIFAR10(torchvision.datasets.CIFAR10):
-    def __init__(self, device, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
-        # equivalent to T.ToTensor()
-        self.data = torch.tensor(self.data, device=device)
-        self.targets = torch.tensor(self.targets, device=device)
-        self.data = self.data.to(torch.float32)
-        self.data = self.data.permute(0, 3, 1, 2)
-        self.data = self.data / 255
-
-        # normalize data wrt mean and std
-        self.data = T.Normalize(
-            (0.4914, 0.4822, 0.4465),
-            (0.2023, 0.1994, 0.2010),
-        )(self.data)
-
-        # data aumgentaion for train
-        if kwargs["train"]:
-            transforms = [T.RandomHorizontalFlip()]
-        else:
-            transforms = []
-
-        self.transform = T.Compose(transforms)
-
-    def __getitem__(self, index):
-
-        image = self.data[index % len(self.data)]
-        target = self.targets[index % len(self.data)]
-
-        image = self.transform(image)
-
-        return image, target
-
-    def __len__(self):
-        return self.data.shape[0]
-
-
 def train_epoch(model, train_loader, optimizer, scheduler, device, verbose=0):
 
     train_loss = []
@@ -118,8 +80,8 @@ def print_info(info: dict):
 def train_model(model):
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    n_epochs = 250
-    batch_size = 128
+    n_epochs = 50
+    batch_size = 256
 
     momentum = 0.9
     lr = 0.1
@@ -130,17 +92,47 @@ def train_model(model):
 
     model = model.to(device)
 
-    train_kwargs = {"root": "data", "train": True, "download": True}
-    test_kwargs = {"root": "data", "train": False, "download": False}
+    train_transforms = T.Compose(
+        [
+            T.RandomCrop(32, padding=4),
+            T.RandomHorizontalFlip(),
+            T.ToTensor(),
+            T.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
+            
+            
+        ]
+    )
 
-    train_set = PreLoadCIFAR10(device, **train_kwargs)
-    test_set = PreLoadCIFAR10(device, **test_kwargs)
+    test_transforms = T.Compose(
+        [T.ToTensor(), T.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010))]
+    )
+
+    train_kwargs = {
+        "root": "data",
+        "train": True,
+        "download": True,
+        "transform": train_transforms,
+    }
+    test_kwargs = {
+        "root": "data",
+        "train": False,
+        "download": False,
+        "transform": test_transforms,
+    }
+
+    train_set = torchvision.datasets.CIFAR10(**train_kwargs)
+    test_set = torchvision.datasets.CIFAR10(**test_kwargs)
 
     train_loader = torch.utils.data.DataLoader(
-        train_set, batch_size=batch_size, shuffle=True
+        train_set, batch_size=batch_size, shuffle=True, num_workers=2, pin_memory=True
     )
+
     test_loader = torch.utils.data.DataLoader(
-        test_set, batch_size=batch_size * 4, shuffle=False
+        test_set,
+        batch_size=batch_size * 4,
+        shuffle=False,
+        num_workers=2,
+        pin_memory=True,
     )
 
     optimizer = torch.optim.SGD(
@@ -183,3 +175,4 @@ def train_model(model):
 
 if __name__ == "__main__":
     train_model()
+
