@@ -9,11 +9,12 @@ import torchvision.transforms as T
 def mask_checkpoint(checkpoint, masked_model):
 
     for key, value in masked_model.state_dict().items():
-        if '.__weight_mma_mask' in key:
-            layer_name = key.replace('.__weight_mma_mask', '.weight')
+        if ".__weight_mma_mask" in key:
+            layer_name = key.replace(".__weight_mma_mask", ".weight")
             checkpoint[layer_name] *= value
 
     return checkpoint
+
 
 @dataclass
 class Config:
@@ -58,7 +59,11 @@ def cifar10_dataloaders(config):
     test_set = torchvision.datasets.CIFAR10(**test_kwargs)
 
     train_loader = torch.utils.data.DataLoader(
-        train_set, batch_size=config.batch_size, shuffle=True, num_workers=2, pin_memory=True
+        train_set,
+        batch_size=config.batch_size,
+        shuffle=True,
+        num_workers=2,
+        pin_memory=True,
     )
 
     test_loader = torch.utils.data.DataLoader(
@@ -76,7 +81,9 @@ def resnet18_small_input():
 
     # init model and change first layers for smaller input images
     model = torchvision.models.resnet18(num_classes=10, zero_init_residual=True)
-    model.conv1 = torch.nn.Conv2d(3, 64, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), bias=False)
+    model.conv1 = torch.nn.Conv2d(
+        3, 64, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), bias=False
+    )
     model.maxpool = torch.nn.Identity()
 
     return model

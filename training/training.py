@@ -65,7 +65,7 @@ def test_epoch(model, test_loader, device, verbose=0):
 def train_phase(model, optimizer, train_loader, test_loader, config):
 
     scheduler = torch.optim.lr_scheduler.OneCycleLR(
-    optimizer,
+        optimizer,
         max_lr=config.lr,
         div_factor=1e5,
         epochs=config.num_epochs,
