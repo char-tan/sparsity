@@ -16,6 +16,20 @@ def mask_checkpoint(checkpoint, masked_model):
     return checkpoint
 
 
+# little bit hacky
+def find_downsample_layers(model):
+
+    downsample_layers = []
+
+    for name, _ in model.named_parameters():
+
+        if "downsample" in name and "weight" in name:
+
+            downsample_layers.append(name[:-7])
+
+    return downsample_layers
+
+
 @dataclass
 class Config:
     device: str = "cuda" if torch.cuda.is_available() else "cpu"
