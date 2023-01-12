@@ -1,0 +1,6 @@
+{
+  "files.associations": {
+    "vector": "cpp"
+  },
+  "python.analysis.typeCheckingMode": "basic"
+}

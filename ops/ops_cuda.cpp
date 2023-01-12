@@ -22,7 +22,17 @@ torch::Tensor add(
 	return cuda_add(a, b);
 }
 
+int sparsemm( // FIXME signature to proper types
+		torch::Tensor a,
+		torch::Tensor b) 
+{
+	CHECK_INPUT(a);
+	CHECK_INPUT(b);
+	return cpp_sparsemm(a, b);
+}
+
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) 
 {
 	m.def("add", &add, "cuda add");
+	m.def("sparsemm", &sparsemm, "cusparselt-enabled matrix-multiply");
 }
