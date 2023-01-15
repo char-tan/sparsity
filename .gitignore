@@ -162,3 +162,5 @@ dmypy.json
 *.exe
 *.out
 *.app
+
+.DS_Store
