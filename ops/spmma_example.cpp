@@ -48,7 +48,7 @@
  */
 #include <cuda_runtime_api.h> // cudaMalloc, cudaMemcpy, etc.
 // #include <cusparseLt.h>       // cusparseLt header
-#include "/content/libcusparse_lt-linux-x86_64-0.3.0.3-archive/include/cusparseLt.h" // colab-friendly cusparseLt header
+#include "/content/libcusparse_lt-linux-x86_64-0.3.0.3-archive/include/cusparseLt.h" // colab-friendly cusparseLt header: https://stackoverflow.com/a/63171395
 #include <cstdio>             // printf
 #include <cstdlib>            // std::rand
 #include <torch/extension.h>
