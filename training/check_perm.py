@@ -2,12 +2,23 @@ import torch
 import torch.nn.functional as F
 import torchvision
 
+import copy
 import numpy as np
 import pandas
 from tqdm import tqdm
 
 from utils import resnet18_small_input, cifar10_dataloaders, Config
 from myfirstcnn import MyFirstCNN
+
+def inverse_permutation(perm):
+
+    inv_perm = torch.empty(len(perm), dtype=int)
+
+    for i in torch.arange(len(perm)):
+        inv_perm[perm[i]] = i
+
+    return inv_perm
+
 
 def seek_row_perm(p, p_pruned, mask):
 
@@ -25,10 +36,25 @@ def seek_row_perm(p, p_pruned, mask):
             args = torch.argwhere(mask[j]).flatten()
             eqs[j] = torch.eq(p[i][args], p_pruned[j][args]).sum()
 
+        #print(eqs, len(p[i]))
+        #breakpoint()
+
         maxes[i] = torch.max(eqs)
         argmaxes[i] = torch.argmax(eqs)
 
-    return maxes, argmaxes
+    if (maxes == p.shape[1]).sum() == p.shape[0]:
+        print('unpruned layer matched')
+        success = True
+    elif (maxes.mean() > p.shape[1] // 3):
+        print('pruned layer matched')
+        success = True
+    else:
+        print('matched fail')
+        success = False
+
+    perm = inverse_permutation(argmaxes)
+
+    return perm, success
 
 
 def find_layer_perm(p, p_pruned, mask):
@@ -43,24 +69,19 @@ def find_layer_perm(p, p_pruned, mask):
 
     c_len, r_len = p.shape[:2]
 
-    r_maxes, r_arg_maxes = seek_row_perm(p, p_pruned, mask)
-    c_maxes, c_arg_maxes = seek_row_perm(p.t(), p_pruned.t(), mask.t())
+    r_arg_maxes, r_success = seek_row_perm(p, p_pruned, mask)
 
-    r_normalised_unmatched = (r_len - r_maxes.mean()) / r_len
-    c_normalised_unmatched = (c_len - c_maxes.mean()) / c_len
+    if r_success:
+        return r_arg_maxes, 'R'
 
-    if r_normalised_unmatched < c_normalised_unmatched:
-        perm = r_arg_maxes.long(), 'R'
-    elif r_normalised_unmatched > c_normalised_unmatched:
-        perm = c_arg_maxes.long(), 'C'
-    elif torch.count_nonzero(mask) == mask.numel():
-        # mask is all ones (no mask), can return either
-        perm = r_arg_maxes.long(), 'R'
     else:
-        print('problem!')
-        assert ValueError
+        c_arg_maxes, c_success = seek_row_perm(p.t(), p_pruned.t(), mask.t())
 
-    return perm
+        if c_success:
+            return c_arg_maxes, 'C'
+        else:
+            raise ValueError
+
 
 def find_model_perm(model_factory, weight1, weight1_pruned):
 
@@ -86,8 +107,6 @@ def find_model_perm(model_factory, weight1, weight1_pruned):
                     mask = weight1_pruned[n_pruned.replace('.weight', '.__weight_mma_mask')]
                 else:
                     mask = torch.ones_like(p)
-                    print(p.shape)
-                    print(mask.shape)
     
                 if "conv" in n: 
                     perm = find_layer_perm(p, p_pruned, mask)
@@ -138,20 +157,28 @@ def apply_layer_perm(p, perm):
     return p
 
 
-def apply_model_perm(model, model_perm):
-       
-    for n, p in model.named_parameters():
-    
+def apply_model_perm(weights, model_perm):
+
+    permuted_weights = copy.deepcopy(weights)
+
+    for n, p in weights.items():
+
+        if 'mma_mask' in n:
+            continue
+
+        #print(permuted_weights['conv0.weight'][0][0])
+        #breakpoint()
+
         print('\npermuting', n)
-    
-        old_p = p.clone()
+
         perm = model_perm[n]
-        p = apply_layer_perm(p, perm)
+        permuted_weights[n] = apply_layer_perm(p, perm)
     
-        assert p.shape == old_p.shape
-        print(torch.eq(old_p, p).sum(), 'equal out of', p.numel())
+        print(torch.eq(weights[n], permuted_weights[n]).sum(), 'equal out of', p.numel())
 
     print()
+
+    return permuted_weights
 
 def check_outputs(model_my_perm, model_unpermuted, dataloaders):
 
@@ -164,42 +191,86 @@ def check_outputs(model_my_perm, model_unpermuted, dataloaders):
                 p1_unp_out = model_unpermuted(data)
             
                 mse = F.mse_loss(p1_out, p1_unp_out)
-                kl_div = F.kl_div(F.log_softmax(p1_out, dim=-1), F.log_softmax(p1_unp_out, dim=-1), log_target=True, reduction='batchmean')
-            
-                assert mse == 0.0
-                assert kl_div == 0.0
+
+                assert mse < 1e-12
 
 ### setup
 
-torch.set_printoptions(linewidth=250)
+#model_factory = resnet18_small_input
+#file1 = 'phase1_2.pt'
+#file1_pruned = 'phase1_pruned_2.pt'
+
 model_factory = MyFirstCNN
-file1 = 'phase1_mf.pt'
-file1_pruned = 'phase1_pruned_mf.pt'
+f = 'phase1_mf.pt'
+f_pruned = 'phase1_pruned_mf.pt'
 
 ### load weights
 
-weight1 = torch.load(file1, map_location="cpu")
-weight1_pruned = torch.load(file1_pruned, map_location="cpu")
+weights = torch.load(f, map_location="cpu")
+weights_pruned = torch.load(f_pruned, map_location="cpu")
 
 ### seek permutation
 
-model_perm = find_model_perm(model_factory, weight1, weight1_pruned)
+model_perm = find_model_perm(model_factory, weights, weights_pruned)
+
+#for key in weights.keys():
+#    
+#    perm = model_perm[key][0][0]
+#
+#    try:
+#        print('top')
+#        print(weights[key][0][0])
+#        print(weights_pruned[key][perm][0])
+#    except:
+#        pass
+#
+#    breakpoint()
+#    break
 
 ### apply permutation
  
-phase1_my_perm = model_factory()
-phase1_my_perm.load_state_dict(weight1)
+weights_permuted = apply_model_perm(weights, model_perm)
 
-apply_model_perm(phase1_my_perm, model_perm)
+breakpoint()
 
 ### check vs original model
 
 phase1_unpermuted = model_factory()
-phase1_unpermuted.load_state_dict(weight1)
+print(phase1_unpermuted.load_state_dict(weights, strict=False))
+
+phase1_pruned = model_factory()
+print(phase1_pruned.load_state_dict(weights_pruned, strict=False))
+
+phase1_permuted = model_factory()
+print(phase1_permuted.load_state_dict(weights_permuted, strict=False))
+
+#for p1, p2, p3 in zip(phase1_unpermuted.parameters(), phase1_pruned.parameters(), phase1_permuted.parameters()):
+#
+#    print(p1.shape)
+#    print(p2.shape)
+#    print(p3.shape)
+#
+#    try:
+#        print('unpermuted')
+#        print(p1[0][0])
+#        print('pruned')
+#        print(p2[0][0])
+#        print('permuted')
+#        print(p3[0][0])
+#
+#    except:
+#        print('unpermuted')
+#        print(p1[0])
+#        print('pruned')
+#        print(p2[0])
+#        print('permuted')
+#        print(p3[0])
+#
+#    breakpoint()
 
 config = Config(batch_size=16)
 dataloaders = cifar10_dataloaders(config)
 
-check_outputs(phase1_my_perm, phase1_unpermuted, dataloaders)
+check_outputs(phase1_unpermuted, phase1_permuted, dataloaders)
 
 print('success!')
