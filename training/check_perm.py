@@ -4,6 +4,7 @@ import torchvision
 
 import numpy as np
 import pandas
+from tqdm import tqdm
 
 from utils import resnet18_small_input, cifar10_dataloaders, Config
 from myfirstcnn import MyFirstCNN
@@ -15,9 +16,7 @@ def seek_row_perm(p, p_pruned, mask):
     maxes = torch.zeros(n_rows)
     argmaxes = torch.zeros(n_rows, dtype=int)
 
-    for i in range(n_rows):
-
-        print(i)
+    for i in tqdm(range(n_rows)):
 
         eqs = torch.zeros(n_rows)
 
@@ -63,15 +62,68 @@ def find_layer_perm(p, p_pruned, mask):
 
     return perm
 
+def find_model_perm(model_factory, weight1, weight1_pruned):
+
+    phase1 = model_factory()
+    phase1_pruned = model_factory()
+
+    phase1.load_state_dict(weight1)
+    phase1_pruned.load_state_dict(weight1_pruned, strict=False)
+
+    model_perm = dict()
+    
+    with torch.no_grad():
+        for (n, p), (n_pruned, p_pruned) in zip(
+            phase1.named_parameters(), phase1_pruned.named_parameters()
+        ):
+    
+            print('\nseeking permutaion for', n)
+    
+            if 'weight' in n:
+    
+                # check if there is a weight mask, if not mask all ones
+                if n.replace('.weight', '.__weight_mma_mask') in weight1_pruned.keys():
+                    mask = weight1_pruned[n_pruned.replace('.weight', '.__weight_mma_mask')]
+                else:
+                    mask = torch.ones_like(p)
+                    print(p.shape)
+                    print(mask.shape)
+    
+                if "conv" in n: 
+                    perm = find_layer_perm(p, p_pruned, mask)
+    
+                elif 'linear' in n:
+                    # TODO - can't handle permuted linear layers
+                    perm = torch.arange(p.shape[0]), 'R'
+    
+                elif "bn" in n:
+                    # batch norm has same permutation as previous layer
+                    perm = perm
+                
+                elif "downsample" in n:
+                    # TODO handle DS - think is just same as conv
+                    perm = find_layer_perm(p, p_pruned, mask)
+    
+            elif "bias" in n:
+                if perm[-1] == 'R':
+                    # bias has same permutation as previous layer
+                    perm = perm
+                else:
+                    perm = torch.arange(len(p)), 'R'
+    
+            else:
+                raise ValueError
+    
+            model_perm[n] = perm
+
+    return model_perm
+
 
 def apply_layer_perm(p, perm):
 
     orig_shape = p.shape
 
     p = p.view(orig_shape[0], -1)
-
-    #print(p.shape)
-    #print(perm[0].shape)
 
     if perm[-1] == 'R':
         p = p[perm[0],:]
@@ -86,96 +138,68 @@ def apply_layer_perm(p, perm):
     return p
 
 
+def apply_model_perm(model, model_perm):
+       
+    for n, p in model.named_parameters():
+    
+        print('\npermuting', n)
+    
+        old_p = p.clone()
+        perm = model_perm[n]
+        p = apply_layer_perm(p, perm)
+    
+        assert p.shape == old_p.shape
+        print(torch.eq(old_p, p).sum(), 'equal out of', p.numel())
+
+    print()
+
+def check_outputs(model_my_perm, model_unpermuted, dataloaders):
+
+    with torch.no_grad():
+    
+        for dataloader in dataloaders:
+            for i, (data, target) in enumerate(tqdm(dataloader)):
+            
+                p1_out = model_my_perm(data)
+                p1_unp_out = model_unpermuted(data)
+            
+                mse = F.mse_loss(p1_out, p1_unp_out)
+                kl_div = F.kl_div(F.log_softmax(p1_out, dim=-1), F.log_softmax(p1_unp_out, dim=-1), log_target=True, reduction='batchmean')
+            
+                assert mse == 0.0
+                assert kl_div == 0.0
+
+### setup
+
 torch.set_printoptions(linewidth=250)
+model_factory = MyFirstCNN
+file1 = 'phase1_mf.pt'
+file1_pruned = 'phase1_pruned_mf.pt'
 
-phase1 = MyFirstCNN()
-phase1_pruned = MyFirstCNN()
+### load weights
 
-weight1 = torch.load("phase1_mf.pt", map_location="cpu")
-weight1_pruned = torch.load("phase1_pruned_mf.pt", map_location="cpu")
-
-phase1.load_state_dict(weight1)
-phase1_pruned.load_state_dict(weight1_pruned, strict=False)
-
-#print(weight1_pruned.keys())
+weight1 = torch.load(file1, map_location="cpu")
+weight1_pruned = torch.load(file1_pruned, map_location="cpu")
 
 ### seek permutation
 
-layer_perms = dict()
-
-with torch.no_grad():
-    for (n, p), (n_pruned, p_pruned) in zip(
-        phase1.named_parameters(), phase1_pruned.named_parameters()
-    ):
-
-        print('\nseeking permutaion for', n)
-
-        if 'weight' in n:
-
-            # check if there is a weight mask, if not mask all ones
-            if n.replace('.weight', '.__weight_mma_mask') in weight1_pruned.keys():
-                mask = weight1_pruned[n_pruned.replace('.weight', '.__weight_mma_mask')]
-            else:
-                mask = torch.ones_like(p)
-
-            if "conv" in n: 
-                perm = find_layer_perm(p, p_pruned, mask)
-
-            elif 'linear' in n:
-                # TODO - can't handle permuted linear layers
-                perm = torch.arange(p.shape[0]), 'R'
-
-            elif "bn" in n:
-                # batch norm has same permutation as previous layer
-                perm = perm
-            
-            elif "downsample" in n:
-                # TODO handle DS - think is just same as conv
-                perm = find_layer_perm(p, p_pruned, mask)
-                breakpoint()
-
-        elif "bias" in n:
-            if perm[-1] == 'R':
-                # bias has same permutation as previous layer
-                perm = perm
-            else:
-                perm = torch.arange(len(p)), 'R'
-
-        else:
-            raise ValueError
-
-        layer_perms[n] = perm
+model_perm = find_model_perm(model_factory, weight1, weight1_pruned)
 
 ### apply permutation
+ 
+phase1_my_perm = model_factory()
+phase1_my_perm.load_state_dict(weight1)
 
-for n, p in phase1.named_parameters():
+apply_model_perm(phase1_my_perm, model_perm)
 
-    print('\npermuting', n)
+### check vs original model
 
-    old_p = p.clone()
-    perm = layer_perms[n]
-    p = apply_layer_perm(p, perm)
-
-    assert p.shape == old_p.shape
-    print(torch.eq(old_p, p).sum(), p.numel())
-
-phase1_unpermuted = MyFirstCNN()
+phase1_unpermuted = model_factory()
 phase1_unpermuted.load_state_dict(weight1)
 
-config = Config(batch_size=1)
-train_loader, test_loader = cifar10_dataloaders(config)
+config = Config(batch_size=16)
+dataloaders = cifar10_dataloaders(config)
 
-for data, target in train_loader:
-    print(data.shape, target.shape)
+check_outputs(phase1_my_perm, phase1_unpermuted, dataloaders)
 
-    p1_out = phase1(data)
-    p1_unp_out = phase1_unpermuted(data)
-
-    print(p1_out)
-    print(p1_unp_out)
-
-    mse = F.mse_loss(p1_out, p1_unp_out)
-    kl_div = F.kl_div(F.log_softmax(p1_out, dim=-1), F.log_softmax(p1_unp_out, dim=-1), log_target=True, reduction='batchmean')
-
-    assert mse == 0.0
-    assert kl_div == 0.0
+print('success!')
