@@ -1,12 +1,12 @@
 import torch
+import torch.nn.functional as F
 import torchvision
 
 import numpy as np
 import pandas
 
-from utils import resnet18_small_input
+from utils import resnet18_small_input, cifar10_dataloaders, Config
 from myfirstcnn import MyFirstCNN
-
 
 def seek_row_perm(p, p_pruned, mask):
 
@@ -99,6 +99,8 @@ phase1_pruned.load_state_dict(weight1_pruned, strict=False)
 
 #print(weight1_pruned.keys())
 
+### seek permutation
+
 layer_perms = dict()
 
 with torch.no_grad():
@@ -144,7 +146,7 @@ with torch.no_grad():
 
         layer_perms[n] = perm
 
-#print(layer_perms)
+### apply permutation
 
 for n, p in phase1.named_parameters():
 
@@ -157,4 +159,23 @@ for n, p in phase1.named_parameters():
     assert p.shape == old_p.shape
     print(torch.eq(old_p, p).sum(), p.numel())
 
-breakpoint()
+phase1_unpermuted = MyFirstCNN()
+phase1_unpermuted.load_state_dict(weight1)
+
+config = Config(batch_size=1)
+train_loader, test_loader = cifar10_dataloaders(config)
+
+for data, target in train_loader:
+    print(data.shape, target.shape)
+
+    p1_out = phase1(data)
+    p1_unp_out = phase1_unpermuted(data)
+
+    print(p1_out)
+    print(p1_unp_out)
+
+    mse = F.mse_loss(p1_out, p1_unp_out)
+    kl_div = F.kl_div(F.log_softmax(p1_out, dim=-1), F.log_softmax(p1_unp_out, dim=-1), log_target=True, reduction='batchmean')
+
+    assert mse == 0.0
+    assert kl_div == 0.0
