@@ -27,17 +27,28 @@ def seek_row_perm(p, p_pruned, mask):
     maxes = torch.zeros(n_rows)
     argmaxes = torch.zeros(n_rows, dtype=int)
 
+    #print(p.shape)
+    #print(p_pruned.shape)
+    #print(mask.shape)
+
     for i in tqdm(range(n_rows)):
+
 
         eqs = torch.zeros(n_rows)
 
         for j in range(n_rows):
 
-            args = torch.argwhere(mask[j]).flatten()
-            eqs[j] = torch.eq(p[i][args], p_pruned[j][args]).sum()
+            #if i == 0 and j == 0:
+            #    print(p[i].shape)
+            #    print(mask[j].shape)
+            #    print(p_pruned[j].shape)
+            #    breakpoint()
 
-        #print(eqs, len(p[i]))
-        #breakpoint()
+            args = torch.argwhere(mask[j]).flatten()
+            eq = torch.eq(p[i][args], p_pruned[j][args]).sum()
+            close = torch.isclose(p[i][args], p_pruned[j][args]).sum()
+
+            eqs[j] = eq
 
         maxes[i] = torch.max(eqs)
         argmaxes[i] = torch.argmax(eqs)
@@ -62,6 +73,7 @@ def find_layer_perm(p, p_pruned, mask):
     assert p.shape == p_pruned.shape
 
     orig_shape = p.shape
+
 
     p = p.view(orig_shape[0], -1)
     p_pruned = p_pruned.view(orig_shape[0], -1)
@@ -104,12 +116,15 @@ def find_model_perm(model_factory, weight1, weight1_pruned):
     
                 # check if there is a weight mask, if not mask all ones
                 if n.replace('.weight', '.__weight_mma_mask') in weight1_pruned.keys():
+                    print('mask')
                     mask = weight1_pruned[n_pruned.replace('.weight', '.__weight_mma_mask')]
                 else:
+                    print('no mask')
                     mask = torch.ones_like(p)
     
                 if "conv" in n: 
                     perm = find_layer_perm(p, p_pruned, mask)
+                    breakpoint()
     
                 elif 'linear' in n:
                     # TODO - can't handle permuted linear layers
@@ -196,13 +211,17 @@ def check_outputs(model_my_perm, model_unpermuted, dataloaders):
 
 ### setup
 
-#model_factory = resnet18_small_input
-#file1 = 'phase1_2.pt'
-#file1_pruned = 'phase1_pruned_2.pt'
+model = 'mfcnn'
 
-model_factory = MyFirstCNN
-f = 'phase1_mf.pt'
-f_pruned = 'phase1_pruned_mf.pt'
+if model == 'resnet':
+    model_factory = resnet18_small_input
+    f = 'phase1_2.pt'
+    f_pruned = 'phase1_pruned_2.pt'
+
+elif model == 'mfcnn':
+    model_factory = MyFirstCNN
+    f = 'mf_1_phase1.pt'
+    f_pruned = 'mf_1_phase1_pruned.pt'
 
 ### load weights
 
@@ -212,6 +231,9 @@ weights_pruned = torch.load(f_pruned, map_location="cpu")
 ### seek permutation
 
 model_perm = find_model_perm(model_factory, weights, weights_pruned)
+
+print(model_perm)
+breakpoint()
 
 #for key in weights.keys():
 #    
@@ -230,8 +252,6 @@ model_perm = find_model_perm(model_factory, weights, weights_pruned)
 ### apply permutation
  
 weights_permuted = apply_model_perm(weights, model_perm)
-
-breakpoint()
 
 ### check vs original model
 
