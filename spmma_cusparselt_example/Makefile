@@ -69,11 +69,24 @@ spmma_example_static: spmma_example.cpp
 	nvcc --std=c++14 ${INCS} spmma_example.cpp -o spmma_example_static \
          -L${CUSPARSELT_PATH}/lib -lcusparseLt ${LIBS}
 
+spmma_example2: spmma_example2.cpp
+	nvcc --std=c++14  ${INCS}  spmma_example.cpp -o spmma_example2  \
+         -L${CUSPARSELT_PATH}/lib -lcusparseLt ${LIBS}
+
+spmma_example_static2: spmma_example2.cpp
+	nvcc --std=c++14 ${INCS} spmma_example.cpp -o spmma_example_static2 \
+         -L${CUSPARSELT_PATH}/lib -lcusparseLt ${LIBS}
+
+
 clean:
 	rm -f spmma_example spmma_example_static
 
 test:
 	@echo "\n==== cusparseLt SpMMA Test ====\n"
 	./spmma_example
+
+test2:
+	@echo "\n==== cusparseLt SpMMA Test ====\n"
+	./spmma_example2
 
 .PHONY: clean all test
