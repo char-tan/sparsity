@@ -3,6 +3,7 @@ __pycache__/
 *.py[cod]
 *$py.class
 
+
 # C extensions
 *.so
 
@@ -163,4 +164,9 @@ dmypy.json
 *.out
 *.app
 
+<<<<<<< HEAD
 .DS_Store
+=======
+# data dirs
+*data
+>>>>>>> 7744ec4caeee65b00af7ae0ec86aebec0c5aebcc
